@@ -7,7 +7,7 @@ export const SubmitButton = () => {
   const handleSubmit = async () => {
     try {
       const response = await fetch(
-        "https://vectorshift-asgt-production.up.railway.app/pipelines/parse",
+        "https://llm-pipeline-builder-production.up.railway.app/pipelines/parse",
         {
           method: "POST",
           headers: {
