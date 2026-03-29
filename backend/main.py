@@ -1,12 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Dict
 from collections import defaultdict, deque
 
-app = FastAPI(title="VectorShift Backend API")
+app = FastAPI(title="LLM Pipeline Backend")
 
-# ✅ CORS (IMPORTANT)
+# -------------------------
+# CORS (VERY IMPORTANT)
+# -------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,20 +16,6 @@ app.add_middleware(
 )
 
 # -------------------------
-# Models
-# -------------------------
-class Node(BaseModel):
-    id: str
-
-class Edge(BaseModel):
-    source: str
-    target: str
-
-class Pipeline(BaseModel):
-    nodes: List[Node]
-    edges: List[Edge]
-
-# -------------------------
 # Health Check
 # -------------------------
 @app.get("/")
@@ -37,40 +23,46 @@ def root():
     return {"status": "Backend running successfully"}
 
 # -------------------------
-# Pipeline Endpoint
+# Pipeline Parse Endpoint
 # -------------------------
 @app.post("/pipelines/parse")
-def parse_pipeline(pipeline: Pipeline):
-    num_nodes = len(pipeline.nodes)
-    num_edges = len(pipeline.edges)
+async def parse_pipeline(request: Request):
+    data = await request.json()
 
-    graph: Dict[str, List[str]] = defaultdict(list)
-    indegree: Dict[str, int] = defaultdict(int)
+    nodes = data.get("nodes", [])
+    edges = data.get("edges", [])
 
-    for node in pipeline.nodes:
-        indegree[node.id] = 0
+    # Extract node IDs safely
+    node_ids = [node.get("id") for node in nodes if "id" in node]
 
-    for edge in pipeline.edges:
-        graph[edge.source].append(edge.target)
-        indegree[edge.target] += 1
+    graph = defaultdict(list)
+    indegree = {nid: 0 for nid in node_ids}
 
-    # Kahn's Algorithm
+    for edge in edges:
+        src = edge.get("source")
+        tgt = edge.get("target")
+
+        if src in indegree and tgt in indegree:
+            graph[src].append(tgt)
+            indegree[tgt] += 1
+
+    # Kahn’s Algorithm (DAG check)
     queue = deque([n for n in indegree if indegree[n] == 0])
     visited = 0
 
     while queue:
-        current = queue.popleft()
+        node = queue.popleft()
         visited += 1
 
-        for neighbor in graph[current]:
+        for neighbor in graph[node]:
             indegree[neighbor] -= 1
             if indegree[neighbor] == 0:
                 queue.append(neighbor)
 
-    is_dag = visited == num_nodes
+    is_dag = visited == len(node_ids)
 
     return {
-        "num_nodes": num_nodes,
-        "num_edges": num_edges,
+        "num_nodes": len(node_ids),
+        "num_edges": len(edges),
         "is_dag": is_dag
     }
